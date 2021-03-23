@@ -72,10 +72,10 @@ With that general workflow above, the next part is how to actually go about impl
 
 There's a few ways to go about implementing a workflow in targets, but I like using the **tar_plan** function which comes from the [tarchetypes](https://github.com/ropensci/tarchetypes) package. Briefly, this function wraps a series of target definitions using a special format.  To give an example, here's what the QTL mapping plan looks like with just the first four targets. **tar_target** is the fuction you use to define a target. The first argument to the function is the name of the target, the second is the "command", what the target needs to do. There's many other available arguments, but you can do a whole lot with just these two. 
 
-For now, ignore all the text in the script before the *tar_plan* call. In the plan below, the first target is named *InputFile*. It just defines where I have the .csv cross stored on my computer. The following targets read in the cross, perform QTL mapping with single marker regression and perform permutations with single marker regression. There's a couple things to note here. First, you can see the special *format* argument in the first target. This lets the workflow know that this target is an external file. In the second target, I used a different way to name the target. This is the naming scheme from **drake** where you assign the output of the target command to the target name. In practice, this is equivalent too the following two target definitions which have the name in the first argument position of the function, and the command given by the custom function call in the second position. 
+For now, ignore all the text in the script before the **tar_plan** call. In the plan below, the first target is named **InputFile**. It just defines where I have the .csv cross stored on my computer. The following targets read in the cross, perform QTL mapping with single marker regression and perform permutations with single marker regression. There's a couple things to note here. First, you can see the special **format** argument in the first target. This lets the workflow know that this target is an external file. In the second target, I used a different way to name the target. This is the naming scheme from **drake** where you assign the output of the target command to the target name. In practice, this is equivalent too the following two target definitions which have the name in the first argument position of the function, and the command given by the custom function call in the second position. 
 
 <br>
-<details><summary>A simple plan</summary>
+<details><summary>A simple plan (click the triangle to show/hide)</summary>
 
 ```{r, First_Targets, eval = FALSE, echo = TRUE}
 ## Load your packages, e.g. library(targets).
@@ -112,7 +112,7 @@ tar_plan(
 </details>
 <br>
 
-To give more detail, look at what the (barely) custom *Map_Regression* function from the third target (RegressionResults) looks like. 
+To give more detail, look at what the (barely) custom **Map_Regression** function from the third target (RegressionResults) looks like. 
 
 <br>
 <details><summary>marker regression function</summary>
@@ -134,7 +134,7 @@ Map_Regression <- function(CrossData = QTLData, Pheno = phenames(QTLData)) {
 
 You can see why I say "barely". This function is just a wrapper for the scanone function from r/qtl with the method set to marker regression, and slightly different argument names. You could just as easily use the scanone function alone, I only wrapped the function so that it would be more obvious what I was doing when I read through my plan. 
 
-Now would be a good time to introduce another helpful function. At any point, you can see the underlying graph that drives the workflow with the *tar_visnetwork* function. Here is what this network looks like right now with just these four targets. 
+Now would be a good time to introduce another helpful function. At any point, you can see the underlying graph that drives the workflow with the **tar_visnetwork** function. Here is what this network looks like right now with just these four targets. 
 
 
 ```{r, SimpleNet, results="asis"}
@@ -143,7 +143,7 @@ cat( paste( readLines( paste0(here(), "/NetworkPlots/SimpleNetwork.html") ), col
 
 This is a pretty straightforward workflow, and it's not very different than what you would get by writing a standard R script. Things get more interesting when we start to fit many models, and compare their results. 
 
-The *cim* function from r/qtl is used to perform composite interval mapping. This function has two main parameters: the number of marker cofactors, and the window size. When performing a qtl mapping experiment, you might want to try different combinations of these parameters and inspect the results of each combination. This is where targets really starts to shine. 
+The **cim** function from r/qtl is used to perform composite interval mapping. This function has two main parameters: the number of marker cofactors, and the window size. When performing a qtl mapping experiment, you might want to try different combinations of these parameters and inspect the results of each combination. This is where targets really starts to shine. 
 
 Here's what the plan looks like after I added some functions to perform composite interval mapping with many different parameter combinations. 
 
@@ -218,26 +218,20 @@ tar_plan(
                              WindowSize = CIM_Window,
                              perm       = F))
     
-  ),
-
-  # Combine the results to lists
-   tar_combine(CompositeIntervalResults_Combined,
-               CIM_Mapped[[1]],
-               command = list(!!!.x)),
-  
-  # Summarise the CIM mapping results
-  tar_target(CompositeIntervalResults_Summary,
-             Summarise_CIM(CIM_Results = CompositeIntervalResults_Combined)),
+  )
+)
 
 ```
 </details>
 <br>
 
-A first thing to notice are the *AllPhenos* vector and the *CIM_ModelParams* tibble before the call to *tar_plan*. AllPhenos is a vector which says what phenotypes I want to perfrom QTL mapping on, and the CIM_ModelParams is a table that holds every combination of model parameters (number of marker cofactors, window size, and phenotype) that I want to try. In this case, I used the expand_grid function to return a tibble with a row for every combination of the three paramater vectors. In this example, because I supplied three numbers of marker cofactors, three window sizes, and 5 phenotypes, 45 (3 x 3 x 5) models will be fit. 
+A first thing to notice are the **AllPhenos** vector and the **CIM_ModelParams** tibble before the call to **tar_plan**. AllPhenos is a vector which says what phenotypes I want to perfrom QTL mapping on, and the **CIM_ModelParams** is a table that holds every combination of model parameters (number of marker cofactors, window size, and phenotype) that I want to try. In this case, I used the expand_grid function to return a tibble with a row for every combination of the three paramater vectors. I supplied three numbers of marker cofactors, three window sizes, and 5 phenotypes, so a total of 45 (3 x 3 x 5) models will be fit. 
 
-Normally, this would be relatively cumbersome to implement in base R, and even harder to keep the results organized. In targets, a solution to this repetition of an analysis task with different parameter combinations is already provided through [branching](https://books.ropensci.org/targets/static.html). In short, this allows you to supply a target with a data structure that holds named parameter values which can then be accessed by a function which takes as input arguments with matching names. A user can then define a [pattern](https://books.ropensci.org/targets/dynamic.html#patterns) when using dynamic branching, or helper functions from [tarchetypes](https://docs.ropensci.org/tarchetypes/reference/index.html) when using static branching to describe how the values in this data structure should be used to define a new set of (many) targets. 
+Normally, this would be relatively cumbersome to implement in base R, and even harder to keep the results organized. In targets, a solution to this repetition of an analysis task with different parameter combinations is already provided through [branching](https://books.ropensci.org/targets/static.html). In short, this allows you to supply a target with a data structure that holds **named** parameter values which can then be accessed by a function with arguments that refer to these parameter values by their names. 
 
-In that plan above, I give the parameter combinations in the *CIM_ModelParams* tibble, and actually define the new targets in the *CIM_Mapped* step. The *tar_map* funciton I use there is a special helper function. This uses similar logic to the *map* function from [purrr](https://purrr.tidyverse.org/reference/map.html) where the function you give in the wrapped target definition is applied to each parameter(s) you give in the value field. In the example above, you can see that the *CompositeIntervalResults* target calls the *Map_Composite* function which takes as arguments a cross object, a number of marker cofactors, a window size, and a phenotype. The important thing to note is the values given for these arguments match the names of the paramaters given in the *CIM_ModelParams* tibble. This is how targets figures out which targets need to be created, and what commands (function calls) need to be performed for each. 
+A user can then define a [pattern](https://books.ropensci.org/targets/dynamic.html#patterns) when using dynamic branching, or use helper functions from [tarchetypes](https://docs.ropensci.org/tarchetypes/reference/index.html) when using static branching to describe how the values in this data structure should be used to define a new set of targets. 
+
+In that plan above, I give the parameter combinations in the **CIM_ModelParams** tibble up front, and actually define the new targets in the **CIM_Mapped** step. The **tar_map**  function I use there is a special helper function from tarchetypes. This uses similar logic to the **map** function from [purrr](https://purrr.tidyverse.org/reference/map.html) where the function you give in the target definition(s) is applied to each parameter(s) you provide with the value argument. In the example above, you can see that the **CompositeIntervalResults** target calls the **Map_Composite** function which takes as arguments a cross object, a number of marker cofactors, a window size, and a phenotype. The important thing to note is the values given for these arguments match the names of the paramaters given in the **CIM_ModelParams** tibble, with the exception of the cross object which is provided through the name of the upstream target which holds the cross object. This is how targets figures out which targets need to be created, and what commands (function calls) need to be performed for each. 
 
 At this point, it may be helpful to check up on what the graph looks like now. 
 <br>
@@ -245,6 +239,10 @@ At this point, it may be helpful to check up on what the graph looks like now.
 cat( paste( readLines( paste0(here(), "/NetworkPlots/CIMPlot.html") ), collapse="\n" ) )
 ```
 <br>
+
+With just a few lines, 
+
+
 ### Data overview
 
 ## Reproducibility
