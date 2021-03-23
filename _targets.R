@@ -52,6 +52,8 @@ tar_plan(
                                   Pheno     = phenames(QTLData),
                                   nPerm     = 100)),
   
+  #SimpleNetwork = tar_visnetwork(allow = c("InputFile", "QTLData", "RegressionResults", "RegressionPerms")), 
+  
   # Simple interval mapping and permutations
   tar_target(SimpleIntervalResults,
              Map_SimpleInterval(CrossData   = QTLData,

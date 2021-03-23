@@ -31,6 +31,8 @@ I've become very fond these packages, and end up using them in just about every 
 
 [This blog post](https://www.milesmcbain.com/posts/the-drake-post/) by the author of the tflow and fnmate packages is an especially good (and accessible) overview of the benefits of using these workflows, and how to implement them. It almost single-handedly convinced me to start using these packages. The [drake](https://github.com/ropensci/drake) package mentioned in the post is however the predecessor of the targets package. The syntax has changed a bit between the two packages, but the overall goals and design has remained largely the same. Theres even [a chapter](https://books.ropensci.org/targets/drake.html) in the targets manual dedicated to explaining the differences between the two.
 
+Some other potentially helpful links are [this general overview](https://ropensci.org/blog/2021/02/03/targets/)
+
 ## QTL Mapping
 
 Before I go into the actual implementation, I'll (briefly) go over a very general QTL mapping workflow. 
@@ -62,13 +64,82 @@ QTL_Flowchart
 
 You can see that the main differences between the single and multi-QTL mapping paths stem from the fact that you have to evaluate the effect of the different parameters supplied to the model. This isn't to say that using the single-QTL mapping techniques don't involve specifying important model parameters, but in most cases, a researcher will have a good idea what an appropriate choice would be from the onset of the experiment in contrast to the parameters for the multi-QTL techniques that are more subjective. 
 
-## Getting into the targets workflow
+## Working with targets
 
-With that general workflow above, the next part is how to actually go about implementing it in code. Some parts like reading in the cross data, and inspecting the basic structure of the data are fairly straightforward as they are natively implemented in r/QTL and all you have to do is work the respective functions into the workflow. 
+First, just in case you haven't read [this blog post](https://www.milesmcbain.com/posts/the-drake-post/) yet, do it.
 
-This get challenging (but interesting) when you want to fit many QTL models, and then compare their results. This is much more challenging to do as the project can very quickly become large and difficult to manage. The targets and related packages provide a way for a researcher to keep the analysis organized, easier to understand, and provides tools to quickly and painlessly scale your project. 
+With that general workflow above, the next part is how to actually go about implementing it in code. Translating a conceptual flowchart like the one above to code in targets is actually (relatively) straightforward. Briefly, targets requires you to have a specially formatted "master" script file that tells R what tasks you want to perform, and how you will perform them. The "what" part is just a name, and the "how" part given through function calls. A target is essentially just a name a function, and a workflow is a series of these targets that you tie together by using the output of one target as the input to another. In terms of the flowchart above, the "what" is the name of the shapes, and the "how" is what you do to move from one shape to the next. targets then works by analyzing the code in your master script to build a directed graph of analysis tasks. When you run a workflow, this graph is then used to calculate tasks in the order in which they show up. This graph structure is also what targets uses to keep an analysis up to date. If you change a function that is used in an early target, you can see what output is affected by seeing what downstream targets are connected to the target that uses the changed function as a command.  
 
-The rest of this document will go through a pipeline I made for a QTL analysis. 
+There's a few ways to go about implementing a workflow in targets, but I like using the **tar_plan** function which comes from the [tarchetypes](https://github.com/ropensci/tarchetypes) package. Briefly, this function wraps a series of target definitions using a special format.  To give an example, here's what the QTL mapping plan looks like with just the first four targets. **tar_target** is the fuction you use to define a target. The first argument to the function is the name of the target, the second is the "command", what the target needs to do. There's many other available arguments, but you can do a whole lot with just these two. 
+
+For now, ignore all the text in the script before the *tar_plan* call. In the plan below, the first target is named *InputFile*. It just defines where I have the .csv cross stored on my computer. The following targets read in the cross, perform QTL mapping with single marker regression and perform permutations with single marker regression. There's a couple things to note here. First, you can see the special *format* argument in the first target. This lets the workflow know that this target is an external file. In the second target, I used a different way to name the target. This is the naming scheme from **drake** where you assign the output of the target command to the target name. In practice, this is equivalent too the following two target definitions which have the name in the first argument position of the function, and the command given by the custom function call in the second position. 
+
+<br>
+<details><summary>A simple plan</summary>
+
+```{r, First_Targets, eval = FALSE, echo = TRUE}
+## Load your packages, e.g. library(targets).
+source("./packages.R")
+
+## Load your R files
+lapply(list.files("./R", full.names = TRUE), source)
+
+## tar_plan supports drake-style targets and also tar_target()
+tar_plan(
+  
+  # The input cross data, already in the r/qtl "csv" format
+  tar_target(InputFile, 
+             "Data/ExampleCross.csv",
+             format = "file"),
+  
+  # Read the QTL file in with r/qtls "read.cross" function. Also apply
+  # a few basic operations to clean the initial cross
+  QTLData = read_cross(QTL_File = InputFile),
+  
+  # Marker regression mapping
+  tar_target(RegressionResults,
+             Map_Regression(CrossData = QTLData,
+                                Pheno = phenames(QTLData))),
+  
+  # Permutations for the marker regression
+  tar_target(RegressionPerms,
+             Map_Regression_Perms(CrossData = QTLData,
+                                  Pheno     = phenames(QTLData),
+                                  nPerm     = 100))
+  
+)
+```
+</details>
+<br>
+
+To give more detail, look at what the (barely) custom *Map_Regression* function looks like. 
+
+<br>
+<details><summary>marker regression function</summary>
+
+```{r, MapRegressionDef, eval = FALSE, echo = TRUE}
+Map_Regression <- function(CrossData = QTLData, Pheno = phenames(QTLData)) {
+
+  # Just a wrapper for scanone with the method set, and arguments 
+  # supplied in names defined in the workflow
+  scanone(cross     = CrossData, 
+          pheno.col = Pheno,
+          method    = "mr")
+
+}
+
+```
+</details>
+<br>
+
+You can see why I say "barely". This function is just a wrapper for the scanone function from r/qtl with the method set to marker regression, and slightly different argument names. You could just as easily use the scanone function alone, I only wrapped the function so that it would be more obvious what I was doing when I read through my plan. 
+
+Now would be a good time to introduce another helpful function. At any point, you can see the underlying graph that drives the workflow with the *tar_visnetwork* function. Here is what this network looks like right now. 
+
+
+```{r, SimpleNet, results="asis"}
+cat( paste( readLines( paste0(here(), "/NetworkPlots/SimpleNetwork.html") ), collapse="\n" ) )
+```
 
 ### Data overview
 
