@@ -41,6 +41,11 @@ tar_plan(
   # a few basic operations to clean the initial cross
   QTLData = read_cross(QTL_File = InputFile),
   
+  # Basic summary of the cross and simple plots from r/qtl
+  tar_target(QTL_SimpleSummary, 
+             list(BasicSummary = summary(QTLData),
+                  SummaryPlots = plot(QTLData))),
+  
   ### Look into tar_map for these?
   # Marker regression mapping and permutations
   tar_target(RegressionResults,

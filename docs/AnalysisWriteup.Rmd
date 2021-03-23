@@ -1,5 +1,5 @@
 ---
-title: "A QTL mapping analysis using the r/qtl and targets packages"
+title: "A QTL mapping analysis using the r/qtl and targets packages (Work in progress)"
 author: "Jay Gillenwater"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
@@ -9,7 +9,20 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 ## target knits Rmds in their own session, so load libraries here.
 ## source("../packages.R")
+
+local({
+  hook_output <- knitr::knit_hooks$get('output')
+  knitr::knit_hooks$set(output = function(x, options) {
+    if (!is.null(options$max.height)) options$attr.output <- c(
+      options$attr.output,
+      sprintf('style="max-height: %s;"', options$max.height)
+    )
+    hook_output(x, options)
+  })
+})
+
 ```
+
 
 Working on projects in R is typically an iterative experience. You write a function, record the results, explore the results with plots, improve your functions, rinse and repeat. Repeat for just a little while and you end up with an environment filled with forgotten names and a script half a mile long (speaking from personal experience). 
 
@@ -49,8 +62,7 @@ Once a scan is performed with some technique, a user then has to decide what qua
 
 ### Estimating effects
 
-Once a set of significant QTL has been found, the next step is 
-
+Once a set of significant QTL has been found, the next step is to obtain information about the QTL themselves. This often includes statistics like how much of the phenotypic variation can be explained by the QTL, its additive effect, a LOD score, and others. In r/qtl this information is obtained with the **fitqtl** function.  
 
 ### General workflow
 
@@ -64,13 +76,13 @@ QTL_Flowchart
 
 You can see that the main differences between the single and multi-QTL mapping paths stem from the fact that you have to evaluate the effect of the different parameters supplied to the model. This isn't to say that using the single-QTL mapping techniques don't involve specifying important model parameters, but in most cases, a researcher will have a good idea what an appropriate choice would be from the onset of the experiment in contrast to the parameters for the multi-QTL techniques that are more subjective. 
 
-## Working with targets
+## QTL mapping with targets
 
-First, just in case you haven't read [this blog post](https://www.milesmcbain.com/posts/the-drake-post/) yet, do it.
+In this section, I'm going to talk about some functionality of targets that have been really useful for running QTL analyses. While I'll try to go into detail on some of the most important functions for this, I wont be able to cover all the inns and outs of targets, and running a targets project. That being said, the package authors have written a very good [user manual](https://books.ropensci.org/targets/) to go over all the fine details of using the package. In case you haven't read [this blog post](https://www.milesmcbain.com/posts/the-drake-post/) yet, do it. It was really helpful for getting me up and running with drake, and the concepts carry over almost seamlessly to targets. I'd suggest that if you haven't used the package yet, start with the blog post and then check out the manual. 
 
-With that general workflow above, the next part is how to actually go about implementing it in code. Translating a conceptual flowchart like the one above to code in targets is actually (relatively) straightforward. Briefly, targets requires you to have a specially formatted "master" script file that tells R what tasks you want to perform, and how you will perform them. The "what" part is just a name, and the "how" part given through function calls. A target is essentially just a name a function, and a workflow is a series of these targets that you tie together by using the output of one target as the input to another. In terms of the flowchart above, the "what" is the name of the shapes, and the "how" is what you do to move from one shape to the next. targets then works by analyzing the code in your master script to build a directed graph of analysis tasks. When you run a workflow, this graph is then used to calculate tasks in the order in which they show up. This graph structure is also what targets uses to keep an analysis up to date. If you change a function that is used in an early target, you can see what output is affected by seeing what downstream targets are connected to the target that uses the changed function as a command.  
+With the general QTL mapping flowchart above, the next part is how to actually go about implementing it in code. Translating a conceptual flowchart like the one above to code in targets is actually (relatively) straightforward. Briefly, targets requires you to have a specially formatted "master" script file that tells R what tasks you want to perform, and how you will perform them. The "what" part is just a name, and the "how" part given through function calls. A target is essentially just a name a function, and a workflow is a series of these targets that you tie together by using the output of one target as the input to another. In terms of the flowchart above, the "what" is the name of the shapes, and the "how" is what you do to move from one shape to the next. targets then works by analyzing the code in your master script to build a directed graph of analysis tasks. When you run a workflow, this graph is then used to calculate tasks in the order in which they show up. This graph structure is also what targets uses to keep an analysis up to date. If you change a function that is used in an early target, you can see what output is affected by seeing what downstream targets are connected to the target that uses the changed function as a command.  
 
-There's a few ways to go about implementing a workflow in targets, but I like using the **tar_plan** function which comes from the [tarchetypes](https://github.com/ropensci/tarchetypes) package. Briefly, this function wraps a series of target definitions using a special format.  To give an example, here's what the QTL mapping plan looks like with just the first four targets. **tar_target** is the fuction you use to define a target. The first argument to the function is the name of the target, the second is the "command", what the target needs to do. There's many other available arguments, but you can do a whole lot with just these two. 
+There's a few ways to go about implementing a workflow in targets, but I like using the **tar_plan** function which comes from the [tarchetypes](https://github.com/ropensci/tarchetypes) package. Briefly, this function wraps a series of target definitions using a special format.  To give an example, here's what the QTL mapping plan looks like with just the first four targets. **tar_target** is the function you use to define a target. The first argument to the function is the name of the target, the second is the "command", what the target needs to do. There's many other available arguments, but you can do a whole lot with just these two. 
 
 For now, ignore all the text in the script before the **tar_plan** call. In the plan below, the first target is named **InputFile**. It just defines where I have the .csv cross stored on my computer. The following targets read in the cross, perform QTL mapping with single marker regression and perform permutations with single marker regression. There's a couple things to note here. First, you can see the special **format** argument in the first target. This lets the workflow know that this target is an external file. In the second target, I used a different way to name the target. This is the naming scheme from **drake** where you assign the output of the target command to the target name. In practice, this is equivalent too the following two target definitions which have the name in the first argument position of the function, and the command given by the custom function call in the second position. 
 
@@ -225,13 +237,13 @@ tar_plan(
 </details>
 <br>
 
-A first thing to notice are the **AllPhenos** vector and the **CIM_ModelParams** tibble before the call to **tar_plan**. AllPhenos is a vector which says what phenotypes I want to perfrom QTL mapping on, and the **CIM_ModelParams** is a table that holds every combination of model parameters (number of marker cofactors, window size, and phenotype) that I want to try. In this case, I used the expand_grid function to return a tibble with a row for every combination of the three paramater vectors. I supplied three numbers of marker cofactors, three window sizes, and 5 phenotypes, so a total of 45 (3 x 3 x 5) models will be fit. 
+A first thing to notice are the **AllPhenos** vector and the **CIM_ModelParams** tibble before the call to **tar_plan**. AllPhenos is a vector which says what phenotypes I want to perfrom QTL mapping on, and the **CIM_ModelParams** is a table that holds every combination of model parameters (number of marker cofactors, window size, and phenotype) that I want to try in composite interval mapping. In this case, I used the expand_grid function to return a tibble with a row for every combination of the three paramater vectors. I supplied three numbers of marker cofactors, three window sizes, and 5 phenotypes, so this table has a total of 45 (3 x 3 x 5) rows; one for each unique parameter combination. 
 
-Normally, this would be relatively cumbersome to implement in base R, and even harder to keep the results organized. In targets, a solution to this repetition of an analysis task with different parameter combinations is already provided through [branching](https://books.ropensci.org/targets/static.html). In short, this allows you to supply a target with a data structure that holds **named** parameter values which can then be accessed by a function with arguments that refer to these parameter values by their names. 
+Normally, fitting a model for each of these combinations would be relatively cumbersome to implement in base R, and even harder to keep the results organized. In targets, a solution to this repetition of the same analysis task with different parameter combinations is already provided through [branching](https://books.ropensci.org/targets/static.html). In short, this allows you to supply a target with a data structure that holds *named* parameter values which can then be accessed by a function in a target that has arguments which refer to each parameter value by its name in the data structure. 
 
-A user can then define a [pattern](https://books.ropensci.org/targets/dynamic.html#patterns) when using dynamic branching, or use helper functions from [tarchetypes](https://docs.ropensci.org/tarchetypes/reference/index.html) when using static branching to describe how the values in this data structure should be used to define a new set of targets. 
+A user can then define a [pattern](https://books.ropensci.org/targets/dynamic.html#patterns) when using dynamic branching, or use helper functions from [tarchetypes](https://docs.ropensci.org/tarchetypes/reference/index.html) when using static branching to describe how the values in this data structure should be used to create a whole set of targets. 
 
-In that plan above, I give the parameter combinations in the **CIM_ModelParams** tibble up front, and actually define the new targets in the **CIM_Mapped** step. The **tar_map**  function I use there is a special helper function from tarchetypes. This uses similar logic to the **map** function from [purrr](https://purrr.tidyverse.org/reference/map.html) where the function you give in the target definition(s) is applied to each parameter(s) you provide with the value argument. In the example above, you can see that the **CompositeIntervalResults** target calls the **Map_Composite** function which takes as arguments a cross object, a number of marker cofactors, a window size, and a phenotype. The important thing to note is the values given for these arguments match the names of the paramaters given in the **CIM_ModelParams** tibble, with the exception of the cross object which is provided through the name of the upstream target which holds the cross object. This is how targets figures out which targets need to be created, and what commands (function calls) need to be performed for each. 
+In that plan above, I give the parameter combinations in the **CIM_ModelParams** tibble up front, and actually define the new targets in the **CIM_Mapped** step. The **tar_map**  function I use there is a special helper function from tarchetypes. This uses similar logic to the **map** function from [purrr](https://purrr.tidyverse.org/reference/map.html) where the function you give in the target definition(s) is applied to each parameter(s) you provide with the value argument. In the example above, you can see that the **CompositeIntervalResults** target calls the **Map_Composite** function which takes as arguments a cross object, a number of marker cofactors, a window size, and a phenotype. The values given for these arguments match the names of the paramaters given in the **CIM_ModelParams** tibble, with the exception of the cross object which is provided through the name of the upstream target that holds the cross. This is how targets figures out which targets need to be created, and what commands (function calls) need to be performed for each. 
 
 At this point, it may be helpful to check up on what the graph looks like now. 
 <br>
@@ -240,10 +252,145 @@ cat( paste( readLines( paste0(here(), "/NetworkPlots/CIMPlot.html") ), collapse=
 ```
 <br>
 
-With just a few lines, 
+With just a few lines, you can create a huge number of new analyses. By scrolling in on that graph, you can also see that targets has named each target according to the parameter values that were mapped to each function call. As an example, the target names **CompositeIntervalResults_5_15_LeafLength**
+gets its name from **TargetName_"CIM_n.marcovar"_"CIM_Window"_PhenoNames** the order of the paramaters min the target name matches the order of the names in the value object, in this case the **CIM_ModelParams** tibble. 
 
+At this point, the value of any one target can be read by calling tar_read("Target name"). This is helpful for checking that you are getting the output you'd expect, but again gets very cumbersome when you are woring with a large number of targets. A straightforward solution to this is to use another helper function, **tar_combine**. As the name suggests, this function takes several upstream targets, and combines them into a single new target. This function just requires a name, what targets you want to combine, and how you want the results of targets to be combined. 
 
-### Data overview
+Here's what the plan and it's graph look like after **tar_combine** is added to the plan. 
+
+<br>
+<details><summary>Combining the results</summary>
+```{r, CIMPlan_COmbined, eval = FALSE, echo = TRUE}
+## Load your packages, e.g. library(targets).
+source("./packages.R")
+
+## Load your R files
+lapply(list.files("./R", full.names = TRUE), source)
+
+AllPhenos <- c("EarHeight",
+               "LeafLength",
+               "LeafWidth",
+               "CobWeight",
+               "TotalKernelVolume")
+
+# Combinations of parameters for composite interval mapping.
+# Useful early on for checking the effects of different model parameters on the output
+CIM_ModelParams <- expand_grid(
+  CIM_n.marcovar = c(5, 7, 10),
+  CIM_Window     = c(10, 15, 20),
+  PhenoNames     = AllPhenos
+)
+
+## tar_plan supports drake-style targets and also tar_target()
+tar_plan(
+  
+  # The input cross data, already in the r/qtl "csv" format
+  tar_target(InputFile, 
+             "Data/ExampleCross.csv",
+             format = "file"),
+  
+  # Read the QTL file in with r/qtls "read.cross" function. Also apply
+  # a few basic operations to clean the initial cross
+  QTLData = read_cross(QTL_File = InputFile),
+  
+  # Marker regression mapping and permutations
+  tar_target(RegressionResults,
+             Map_Regression(CrossData = QTLData,
+                                Pheno = phenames(QTLData))),
+  
+  tar_target(RegressionPerms,
+             Map_Regression_Perms(CrossData = QTLData,
+                                  Pheno     = phenames(QTLData),
+                                  nPerm     = 100)),
+  
+
+  # Simple interval mapping and permutations
+  tar_target(SimpleIntervalResults,
+             Map_SimpleInterval(CrossData   = QTLData,
+                                      Pheno = phenames(QTLData))),
+  
+  tar_target(SimpleIntervalPerms,
+             Map_SimpleInterval_Perms(CrossData = QTLData,
+                                      Pheno     = phenames(QTLData),
+                                      nPerm     = 100)),
+  
+  # Composite interval mapping
+  # Perform composite interval mapping with each combination of phenotype,
+  # number of marker covariates, and window size as specified above
+  CIM_Mapped <- tar_map(
+    
+    values = CIM_ModelParams,
+    
+    tar_target(CompositeIntervalResults,
+               Map_Composite(CrossData  = QTLData,
+                             Pheno      = PhenoNames,
+                             nCovar     = CIM_n.marcovar,
+                             WindowSize = CIM_Window,
+                             perm       = F))
+    
+  ),
+  
+  # Combine the results to a single list
+   tar_combine(CompositeIntervalResults_Combined,
+               CIM_Mapped[[1]],
+               command = list(!!!.x)),
+  
+  # A simple flowchart for the general QTL mapping process (used in the writeup)
+   tar_target(QTL_Flowchart, 
+           make_flowchart()),
+  
+  # Render the analysis writeup
+   tar_render(AnalysisWriteup, "docs/AnalysisWriteup.Rmd")
+)
+
+```
+</details>
+<br>
+
+<br>
+```{r, CIMNet_Combined, results="asis"}
+cat( paste( readLines( paste0(here(), "/NetworkPlots/CIMPlot_Combined.html") ), collapse="\n" ) )
+```
+<br>
+
+There's three arguments in the **tar_combine** function in that plan, the first is just the target name, the second says what targets you want to combine, and the third (the command) says how you want to combine the targets. In my example, I named the new target *CompositeIntervalResults_Combined*, in the second argument, I specify the targets I want to combine by pulling them from the CIM_Mapped target. I do this by using list indexing, and selecting the first list element. Looking at the structure of the CIM_Mapped target might help to clarify this.
+
+```{r Mapped_Structure, max.height='150px', echo = TRUE}
+
+all_of(CIM_Mapped) %>% typeof()
+
+all_of(CIM_Mapped) %>% str()
+
+```
+
+The third argument to **tar_combine** says how I want the targets to be combined. This uses an operator called "unquote splice" (!!!) which is used to unquote many arguments (targets). Honestly, I only started learning about these operators, and the larger metaprogramming family they belong to fairly recently. Using targets has actually been a great driving force practice these techniques. For a good introduction though, I thought the [chapters on metaprogramming](https://adv-r.hadley.nz/meta-big-picture.html) in the [Advanced R](https://adv-r.hadley.nz/index.html) were very helpful. [Chapter 19](https://adv-r.hadley.nz/quasiquotation.html) in particular covers the unquote-splice and related operators. 
+
+Here I'll take a look at what this combined target looks like. 
+
+<br>
+```{r Combined_Structure, max.height='150px', echo = TRUE}
+
+str(tar_read(CompositeIntervalResults_Combined))
+
+```
+<br>
+
+You can see that this target is a simple list of the *cim* scanone objects, where each list element is named with its target name. This is very useful because the target names contain information about the model parameters used to create the output. This convention allows information about the parameters to be carried forward in the analysis. 
+
+This pattern of defining many targets according to parameter options, and then combining the results of those many targets allows a user to quickly generate and keep track of many QTL mapping experiments. By making a single parameter table and calling two functions, you can have an organized list of QTL mapping results in hand and ready for comparison. 
+
+### Other benefits of targets
+The availability of tools like **tar_map** and **tar_combine** to improve workflow efficiency is arguably one of the least special aspects of targets. With some creative use of functional programming, anyone can mimic the same steps and get identical results with a standard script. Targets improves upon traditional workflows by providing tools that help you to massively reduce the cognitive load of these projects that can quickly become confusing, especially if you're new to mapping experiments (again, speaking from personal experience).
+
+The [user manual](https://books.ropensci.org/targets/), (see chapters 1 and 4 especially), does a good job of justifying the use of the package.
+
+### To do
+- Visualizing results (ggplot, echarts, look into using shiny within markdown for more interactivity)
+- MQM mapping
+- Imputation step (for MQM mapping)
+- Summary function (fitqtl)
+- Parallel processing (Maybe HPC too at some point)
 
 ## Reproducibility
 
