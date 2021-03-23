@@ -1,6 +1,6 @@
 ---
-title: "Untitled Draft"
-author: "Report Author"
+title: "A QTL mapping analysis using the r/qtl and targets packages"
+author: "Jay Gillenwater"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
@@ -11,7 +11,66 @@ knitr::opts_chunk$set(echo = FALSE)
 ## source("../packages.R")
 ```
 
-## Analysis
+Working on projects in R is typically an iterative experience. You write a function, record the results, explore the results with plots, improve your functions, rinse and repeat. Repeat for just a little while and you end up with an environment filled with forgotten names and a script half a mile long (speaking from personal experience). 
+
+This iterative process is especially true for QTL mapping experiments in R. Even with high-quality data in hand, it may not be obvious what the proper mapping technique you should use, or what parameters should be used for a given technique. The process of choosing the appropriate model and model parameters has to instead be tailored to the organism, trait, and structure of the data for each experiment on a case-by-case basis.
+
+In practice, this involves fitting many models, and inspecting the results of each model and how they compare to one another. Keeping track of the models alone can quickly become difficult, let alone how they compare with one another.
+
+One option to alleviate some of these challenges is to use workflow management software which provide an organizational framework for projects in R (and other languages). One such package in R is [targets](https://github.com/ropensci/targets). In the authors words: 
+
+> The targets package is a Make-like pipeline toolkit for Statistics and data science in R. With targets, you can maintain a reproducible workflow without repeating yourself. targets skips costly runtime for tasks that are already up to date, runs the necessary computation with implicit parallel computing, and abstracts files as R objects. A fully up-to-date targets pipeline is tangible evidence that the output aligns with the code and data, which substantiates trust in the results.
+
+In general, using these management tools allow researchers to efficiently manage, understand, and communicate the results of projects that would be frustrating for the programmer to keep track of, and difficult for someone new to the code to understand. Furthermore, these packages are designed to ensure that the results obtained are reproducible so that both you and anyone you share the code with can have confidence in the consistency of the results you obtain. 
+
+The targets package also has an ecosystem of side "helper" packages that augment its base capabilities. These include [tflow](https://github.com/MilesMcBain/tflow) to easily set up projects that use targets, [fnmate](https://github.com/MilesMcBain/fnmate) to define functions in targets projects with simple shortcuts, and the [targetopia](https://wlandau.github.io/targetopia/packages.html) collection of target-adjacent packages for more specialized applications. 
+
+Beyond providing an organizational framework, targets steers users towards a workflow which makes heavy use of functional programming. This allows users to create analysis plans that are both compact and very flexible.
+
+I've become very fond these packages, and end up using them in just about every project I do beyond the most trivial of jobs. The goal of this document is to both show how to use the targets package to implement a QTL mapping pipeline, and demonstrate why I like using it and its related packages so much. 
+
+[This blog post](https://www.milesmcbain.com/posts/the-drake-post/) by the author of the tflow and fnmate packages is an especially good (and accessible) overview of the benefits of using these workflows, and how to implement them. It almost single-handedly convinced me to start using these packages. The [drake](https://github.com/ropensci/drake) package mentioned in the post is however the predecessor of the targets package. The syntax has changed a bit between the two packages, but the overall goals and design has remained largely the same. Theres even [a chapter](https://books.ropensci.org/targets/drake.html) in the targets manual dedicated to explaining the differences between the two.
+
+## QTL Mapping
+
+Before I go into the actual implementation, I'll (briefly) go over a very general QTL mapping workflow. 
+
+### Techniques
+
+r/qtl provides several techniques for performing QTL mapping. Broadly, these may be broken down in terms of those designed to estimate the effects of single QTL, and those designed to estimate the effects of multiple QTL which act simultaneously to influence some trait. In r/qtl the single QTL methods are implemented with the **scanone** function, and the multi-QTL methods are implemented with the **cim**, **stepwiseqtl** , and **mqmscan** functions for composite interval mapping , multiple interval mapping through forward/backward search, and multiple QTL mapping (MQM) respectively. 
+
+A layer of difficulty is added by the multi-QTL models as each has a number of parameters which must be supplied by a user and it is not always obvious what the best choice should be. As an example, in composite interval mapping, a user must supply the number of marker cofactors to use in the analysis, and a window size (in cM). Appropriate values to choose for these parameters is not always clear, and it is typically best to try different combinations, and compare the results you get. 
+
+### Significance Thresholds
+
+Once a scan is performed with some technique, a user then has to decide what qualifies as a *significant* QTL. Evidence for a QTL is typically given as a logarithm of odds (LOD) score where higher values indicate more evidence in favor of the presence of a QTL at some location. To determine an appropriate threshold for declaring significance, a permutation test is typically performed. This involves randomizing the phenotype data against the genotype data, performing a scan for QTL, and recording the highest LOD score obtained. By repeating this procedure many times, a user can generate a distribution of LOD scores that you would expect to see if there was no association between the phenotypes and genotypes **for your specific data set**. A user can the select a percentile of this distribution and declare any QTL with a LOD score above that threshold to be significant. 
+
+### Estimating effects
+
+Once a set of significant QTL has been found, the next step is 
+
+
+### General workflow
+
+Below I made a simple flowchart to show the general steps for the QTL mapping analysis. These are the general steps that I will incorporate into the workflow I implement with targets. In practice, the analysis flow chart itself will be more complicated, but I'll get to that in a bit.   
+
+
+```{r QTLFlowchart, echo=FALSE, fig.dim = c(10,10), fig.align = 'center'}
+tar_load(QTL_Flowchart) 
+QTL_Flowchart
+```
+
+You can see that the main differences between the single and multi-QTL mapping paths stem from the fact that you have to evaluate the effect of the different parameters supplied to the model. This isn't to say that using the single-QTL mapping techniques don't involve specifying important model parameters, but in most cases, a researcher will have a good idea what an appropriate choice would be from the onset of the experiment in contrast to the parameters for the multi-QTL techniques that are more subjective. 
+
+## Getting into the targets workflow
+
+With that general workflow above, the next part is how to actually go about implementing it in code. Some parts like reading in the cross data, and inspecting the basic structure of the data are fairly straightforward as they are natively implemented in r/QTL and all you have to do is work the respective functions into the workflow. 
+
+This get challenging (but interesting) when you want to fit many QTL models, and then compare their results. This is much more challenging to do as the project can very quickly become large and difficult to manage. The targets and related packages provide a way for a researcher to keep the analysis organized, easier to understand, and provides tools to quickly and painlessly scale your project. 
+
+The rest of this document will go through a pipeline I made for a QTL analysis. 
+
+### Data overview
 
 ## Reproducibility
 
